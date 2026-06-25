@@ -9,6 +9,7 @@ const PAGE_SIZE = 30;
 const PAGE_DELAY_MS = 350;
 const MAX_PAGES = 100;
 const ACCOUNT_DELAY_MS = 500;
+const API_TIMEOUT_MS = 30000;
 
 const FIXED_ACCOUNTS = [
   "laqunhphng897",
@@ -129,7 +130,24 @@ function clearStatus(el) {
 
 async function apiGet(path) {
   const url = new URL(path.replace(/^\//, ""), API_BASE);
-  const res = await fetch(url, { headers: { accept: "application/json" } });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+  let res;
+
+  try {
+    res = await fetch(url, {
+      headers: { accept: "application/json" },
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err && err.name === "AbortError") {
+      throw new Error("请求超时，上游接口暂时没有响应");
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+
   let json;
   try {
     json = await res.json();
@@ -495,7 +513,12 @@ async function refreshPlaybackData(options = {}) {
   renderPlayback();
 
   if (playbackState.errors.length) {
-    setStatus(statusEl, "error", `已实时加载 <b>${playbackState.videos.length}</b> 条，${playbackState.errors.length} 个账号失败。`);
+    const errorItems = playbackState.errors.map((item) => `<li>${esc(item)}</li>`).join("");
+    setStatus(
+      statusEl,
+      "error",
+      `已实时加载 <b>${playbackState.videos.length}</b> 条，${playbackState.errors.length} 个账号失败。<ul class="status-list">${errorItems}</ul>`
+    );
   } else {
     setStatus(statusEl, "", `已实时更新 <b>${playbackState.videos.length}</b> 条播放数据。`);
   }

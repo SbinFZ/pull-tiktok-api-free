@@ -12,6 +12,7 @@
  */
 
 const TIKWM = "https://www.tikwm.com/api";
+const UPSTREAM_TIMEOUT_MS = 25000;
 
 // Per-route edge cache TTL (seconds). tikwm rate-limits per IP; all of our
 // users share the Worker egress IP, so caching is the main defence.
@@ -123,15 +124,29 @@ async function proxy(upstreamUrl, ctx, ttl) {
   const cached = await cache.match(cacheKey);
   if (cached) return withCors(cached);
 
-  const res = await fetch(upstreamUrl, {
-    headers: {
-      // tikwm is friendlier with a browser-like UA.
-      "user-agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-        "(KHTML, like Gecko) Chrome/124.0 Safari/537.36",
-      accept: "application/json",
-    },
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
+  let res;
+
+  try {
+    res = await fetch(upstreamUrl, {
+      headers: {
+        // tikwm is friendlier with a browser-like UA.
+        "user-agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+          "(KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+        accept: "application/json",
+      },
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err && err.name === "AbortError") {
+      return errorResponse("upstream_timeout", "tikwm request timed out. Please retry later.", 504);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
 
   if (res.status === 429) {
     return errorResponse(
