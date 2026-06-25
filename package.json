@@ -1,0 +1,14 @@
+{
+  "name": "pull-tiktok-api-free",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Free, no-login web tool to pull TikTok playback info by user or video URL via the tikwm.com API, hosted on Cloudflare Workers.",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

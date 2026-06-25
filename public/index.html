@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TikTok 播放数据查询 · TikTok Stats Puller</title>
+  <meta name="description" content="按用户或视频链接拉取 TikTok 播放、点赞、评论、分享等数据。免登录、免费使用。" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap">
+      <h1>📊 TikTok 播放数据查询</h1>
+      <p class="tagline">按 <strong>用户</strong> 或 <strong>视频链接</strong> 拉取播放量、点赞、评论、分享等数据 · 免登录 · 数据来自 tikwm.com</p>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <!-- Mode tabs -->
+    <nav class="tabs" role="tablist">
+      <button class="tab is-active" data-mode="user" role="tab">👤 按用户</button>
+      <button class="tab" data-mode="url" role="tab">🔗 按视频链接</button>
+    </nav>
+
+    <!-- USER MODE -->
+    <section id="panel-user" class="panel">
+      <form id="form-user" class="search-bar" autocomplete="off">
+        <input
+          id="input-user"
+          type="text"
+          placeholder="输入用户名 (如 tiktok) 或主页链接 (https://www.tiktok.com/@tiktok)"
+          spellcheck="false"
+          required />
+        <label class="toggle">
+          <input type="checkbox" id="auto-all" checked />
+          <span>自动拉取全部视频</span>
+        </label>
+        <button type="submit" class="btn-primary">查询</button>
+      </form>
+
+      <div id="user-status" class="status" hidden></div>
+
+      <!-- Profile header -->
+      <div id="profile" class="profile" hidden>
+        <img id="profile-avatar" class="avatar" alt="头像" />
+        <div class="profile-meta">
+          <div class="profile-name">
+            <span id="profile-nick"></span>
+            <span id="profile-verified" class="verified" hidden title="已认证">✔</span>
+          </div>
+          <a id="profile-handle" class="handle" target="_blank" rel="noopener"></a>
+          <p id="profile-sig" class="signature"></p>
+          <div class="profile-stats">
+            <span><b id="ps-followers">–</b> 粉丝</span>
+            <span><b id="ps-following">–</b> 关注</span>
+            <span><b id="ps-hearts">–</b> 获赞</span>
+            <span><b id="ps-videos">–</b> 作品</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Aggregate stats over loaded videos -->
+      <div id="aggregate" class="aggregate" hidden>
+        <div class="agg-card"><span class="agg-label">已加载视频</span><span id="agg-count" class="agg-val">0</span></div>
+        <div class="agg-card"><span class="agg-label">总播放</span><span id="agg-plays" class="agg-val">0</span></div>
+        <div class="agg-card"><span class="agg-label">总点赞</span><span id="agg-likes" class="agg-val">0</span></div>
+        <div class="agg-card"><span class="agg-label">总评论</span><span id="agg-comments" class="agg-val">0</span></div>
+        <div class="agg-card"><span class="agg-label">总分享</span><span id="agg-shares" class="agg-val">0</span></div>
+        <div class="agg-card"><span class="agg-label">平均播放</span><span id="agg-avg" class="agg-val">0</span></div>
+      </div>
+
+      <div id="user-actions" class="row-actions" hidden>
+        <button id="btn-load-more" class="btn-ghost" hidden>加载更多</button>
+        <button id="btn-export" class="btn-ghost">⬇ 导出 CSV</button>
+      </div>
+
+      <!-- Video table -->
+      <div id="videos-wrap" class="table-wrap" hidden>
+        <table class="videos">
+          <thead>
+            <tr>
+              <th>封面</th>
+              <th class="col-title">标题</th>
+              <th class="num sortable" data-sort="play_count">▶ 播放</th>
+              <th class="num sortable" data-sort="digg_count">❤ 点赞</th>
+              <th class="num sortable" data-sort="comment_count">💬 评论</th>
+              <th class="num sortable" data-sort="share_count">↗ 分享</th>
+              <th class="num sortable" data-sort="collect_count">⭐ 收藏</th>
+              <th class="num sortable" data-sort="create_time">📅 发布</th>
+            </tr>
+          </thead>
+          <tbody id="videos-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- URL MODE -->
+    <section id="panel-url" class="panel" hidden>
+      <form id="form-url" class="search-bar" autocomplete="off">
+        <input
+          id="input-url"
+          type="text"
+          placeholder="粘贴视频链接 (https://www.tiktok.com/@user/video/123...)"
+          spellcheck="false"
+          required />
+        <button type="submit" class="btn-primary">查询</button>
+      </form>
+
+      <div id="url-status" class="status" hidden></div>
+
+      <article id="video-card" class="video-card" hidden>
+        <div class="vc-cover">
+          <img id="vc-img" alt="封面" />
+          <span id="vc-duration" class="vc-duration"></span>
+        </div>
+        <div class="vc-body">
+          <div class="vc-author">
+            <img id="vc-author-avatar" class="avatar-sm" alt="" />
+            <div>
+              <div id="vc-author-nick" class="vc-author-nick"></div>
+              <a id="vc-author-handle" class="handle" target="_blank" rel="noopener"></a>
+            </div>
+          </div>
+          <p id="vc-title" class="vc-title"></p>
+          <div class="vc-stats">
+            <div class="stat"><span class="stat-label">▶ 播放</span><b id="vc-play">–</b></div>
+            <div class="stat"><span class="stat-label">❤ 点赞</span><b id="vc-like">–</b></div>
+            <div class="stat"><span class="stat-label">💬 评论</span><b id="vc-comment">–</b></div>
+            <div class="stat"><span class="stat-label">↗ 分享</span><b id="vc-share">–</b></div>
+            <div class="stat"><span class="stat-label">⭐ 收藏</span><b id="vc-collect">–</b></div>
+            <div class="stat"><span class="stat-label">⬇ 下载</span><b id="vc-download">–</b></div>
+          </div>
+          <div class="vc-links">
+            <a id="vc-play-link" class="btn-ghost" target="_blank" rel="noopener" hidden>无水印视频</a>
+            <a id="vc-music-link" class="btn-ghost" target="_blank" rel="noopener" hidden>背景音乐</a>
+            <a id="vc-source-link" class="btn-ghost" target="_blank" rel="noopener" hidden>原视频</a>
+          </div>
+        </div>
+      </article>
+    </section>
+  </main>
+
+  <footer class="site-footer wrap">
+    <p>联系方式：<a href="mailto:sbin@mysovi.ai">sbin@mysovi.ai</a></p>
+  </footer>
+
+  <script src="app.js" id="app-script"></script>
+</body>
+</html>

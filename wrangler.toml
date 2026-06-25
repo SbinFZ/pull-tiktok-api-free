@@ -1,0 +1,17 @@
+# Cloudflare Worker — TikTok playback-info puller (tikwm proxy)
+# Deploy:  npx wrangler deploy
+# Dev:     npx wrangler dev
+name = "pull-tiktok-api-free"
+main = "src/index.js"
+compatibility_date = "2026-06-01"
+account_id = "4d99845e8fa4969b66fa87c2208ffbcb"
+
+# Static frontend (public/) is served by the platform's Assets runtime.
+# Any path NOT matching a static file falls through to the Worker (src/index.js),
+# which handles the /api/* proxy routes.
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+[observability]
+enabled = true
