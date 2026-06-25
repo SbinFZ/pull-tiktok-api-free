@@ -4,6 +4,8 @@
 
 数据来源：[tikwm.com](https://www.tikwm.com) 公共 API（无需 API Key）。
 
+![界面截图](docs/screenshot.png)
+
 ---
 
 ## ✨ 功能
