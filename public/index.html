@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>TikTok 播放数据查询 · TikTok Stats Puller</title>
-  <meta name="description" content="按用户或视频链接拉取 TikTok 播放、点赞、评论、分享等数据。免登录、免费使用。" />
+  <meta name="description" content="从固定账号实时拉取 TikTok 视频播放、点赞、评论、分享等数据。免登录、免费使用。" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>" />
   <link rel="stylesheet" href="styles.css" />
 </head>
@@ -12,134 +12,212 @@
   <header class="site-header">
     <div class="wrap">
       <h1>📊 TikTok 播放数据查询</h1>
-      <p class="tagline">按 <strong>用户</strong> 或 <strong>视频链接</strong> 拉取播放量、点赞、评论、分享等数据 · 免登录 · 数据来自 tikwm.com</p>
+      <p class="tagline">从固定账号实时拉取视频播放量、点赞、评论、分享等数据 · 免登录 · 数据来自 tikwm.com</p>
     </div>
   </header>
 
   <main class="wrap">
     <!-- Mode tabs -->
     <nav class="tabs" role="tablist">
-      <button class="tab is-active" data-mode="user" role="tab">👤 按用户</button>
-      <button class="tab" data-mode="url" role="tab">🔗 按视频链接</button>
+      <button class="tab is-active" data-mode="playback" role="tab">▶ 数据明细</button>
+      <button class="tab" data-mode="overview" role="tab">📈 数据概览</button>
+      <button class="tab" data-mode="accounts" role="tab">📚 账号库</button>
     </nav>
 
-    <!-- USER MODE -->
-    <section id="panel-user" class="panel">
-      <form id="form-user" class="search-bar" autocomplete="off">
-        <input
-          id="input-user"
-          type="text"
-          placeholder="输入用户名 (如 tiktok) 或主页链接 (https://www.tiktok.com/@tiktok)"
-          spellcheck="false"
-          required />
+    <!-- PLAYBACK DATA -->
+    <section id="panel-playback" class="panel">
+      <div class="data-toolbar">
         <label class="toggle">
-          <input type="checkbox" id="auto-all" checked />
-          <span>自动拉取全部视频</span>
+          <input type="checkbox" id="playback-auto-all" />
+          <span>拉取全部视频</span>
         </label>
-        <button type="submit" class="btn-primary">查询</button>
-      </form>
+        <button type="button" id="btn-refresh-playback" class="btn-primary">刷新播放数据</button>
+      </div>
 
-      <div id="user-status" class="status" hidden></div>
+      <div id="playback-status" class="status" hidden></div>
 
-      <!-- Profile header -->
-      <div id="profile" class="profile" hidden>
-        <img id="profile-avatar" class="avatar" alt="头像" />
-        <div class="profile-meta">
-          <div class="profile-name">
-            <span id="profile-nick"></span>
-            <span id="profile-verified" class="verified" hidden title="已认证">✔</span>
+      <div id="playback-filters" class="filter-panel">
+        <div class="filter-row filter-row-primary">
+          <div class="filter-field">
+            <span>账号</span>
+            <div id="filter-accounts" class="multi-select" data-filter-multi="accounts">
+              <button type="button" class="multi-select-trigger" data-multi-toggle="accounts">
+                <span data-multi-label>全部账号</span>
+                <span class="multi-arrow">▾</span>
+              </button>
+              <div class="multi-select-menu" hidden>
+                <div class="multi-select-actions">
+                  <button type="button" class="btn-mini" data-multi-action="all">全选</button>
+                  <button type="button" class="btn-mini" data-multi-action="clear">清空</button>
+                </div>
+                <div class="multi-options"></div>
+              </div>
+            </div>
           </div>
-          <a id="profile-handle" class="handle" target="_blank" rel="noopener"></a>
-          <p id="profile-sig" class="signature"></p>
-          <div class="profile-stats">
-            <span><b id="ps-followers">–</b> 粉丝</span>
-            <span><b id="ps-following">–</b> 关注</span>
-            <span><b id="ps-hearts">–</b> 获赞</span>
-            <span><b id="ps-videos">–</b> 作品</span>
+          <div class="filter-field">
+            <span>视频</span>
+            <div id="filter-videos" class="multi-select" data-filter-multi="videos">
+              <button type="button" class="multi-select-trigger" data-multi-toggle="videos">
+                <span data-multi-label>全部视频</span>
+                <span class="multi-arrow">▾</span>
+              </button>
+              <div class="multi-select-menu" hidden>
+                <div class="multi-select-actions">
+                  <button type="button" class="btn-mini" data-multi-action="all">全选</button>
+                  <button type="button" class="btn-mini" data-multi-action="clear">清空</button>
+                </div>
+                <div class="multi-options"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="filter-row filter-row-secondary">
+          <div class="filter-field">
+            <span>播放量</span>
+            <div class="filter-pair">
+              <input id="filter-play-min" type="number" min="0" inputmode="numeric" placeholder="最低" data-filter />
+              <input id="filter-play-max" type="number" min="0" inputmode="numeric" placeholder="最高" data-filter />
+            </div>
+          </div>
+          <div class="filter-field">
+            <span>点赞量</span>
+            <div class="filter-pair">
+              <input id="filter-like-min" type="number" min="0" inputmode="numeric" placeholder="最低" data-filter />
+              <input id="filter-like-max" type="number" min="0" inputmode="numeric" placeholder="最高" data-filter />
+            </div>
+          </div>
+          <div class="filter-field">
+            <span>发布时间</span>
+            <div class="filter-pair">
+              <input id="filter-date-from" type="date" data-filter />
+              <input id="filter-date-to" type="date" data-filter />
+            </div>
+          </div>
+          <div class="filter-actions">
+            <button type="button" id="btn-reset-filters" class="btn-ghost">重置筛选</button>
           </div>
         </div>
       </div>
 
-      <!-- Aggregate stats over loaded videos -->
-      <div id="aggregate" class="aggregate" hidden>
-        <div class="agg-card"><span class="agg-label">已加载视频</span><span id="agg-count" class="agg-val">0</span></div>
-        <div class="agg-card"><span class="agg-label">总播放</span><span id="agg-plays" class="agg-val">0</span></div>
-        <div class="agg-card"><span class="agg-label">总点赞</span><span id="agg-likes" class="agg-val">0</span></div>
-        <div class="agg-card"><span class="agg-label">总评论</span><span id="agg-comments" class="agg-val">0</span></div>
-        <div class="agg-card"><span class="agg-label">总分享</span><span id="agg-shares" class="agg-val">0</span></div>
-        <div class="agg-card"><span class="agg-label">平均播放</span><span id="agg-avg" class="agg-val">0</span></div>
+      <div id="playback-empty" class="empty-state">
+        <h2>正在等待实时数据</h2>
       </div>
 
-      <div id="user-actions" class="row-actions" hidden>
-        <button id="btn-load-more" class="btn-ghost" hidden>加载更多</button>
-        <button id="btn-export" class="btn-ghost">⬇ 导出 CSV</button>
+      <div id="playback-aggregate" class="aggregate" hidden>
+        <div class="agg-card"><span class="agg-label">账号数</span><span id="pd-accounts" class="agg-val">0</span></div>
+        <div class="agg-card"><span class="agg-label">视频数</span><span id="pd-videos" class="agg-val">0</span></div>
+        <div class="agg-card"><span class="agg-label">总播放</span><span id="pd-plays" class="agg-val">0</span></div>
+        <div class="agg-card"><span class="agg-label">总点赞</span><span id="pd-likes" class="agg-val">0</span></div>
+        <div class="agg-card"><span class="agg-label">总评论</span><span id="pd-comments" class="agg-val">0</span></div>
+        <div class="agg-card"><span class="agg-label">平均播放</span><span id="pd-avg" class="agg-val">0</span></div>
       </div>
 
-      <!-- Video table -->
-      <div id="videos-wrap" class="table-wrap" hidden>
-        <table class="videos">
+      <div id="playback-wrap" class="table-wrap" hidden>
+        <table class="videos playback-table">
           <thead>
             <tr>
+              <th>账号</th>
               <th>封面</th>
-              <th class="col-title">标题</th>
-              <th class="num sortable" data-sort="play_count">▶ 播放</th>
-              <th class="num sortable" data-sort="digg_count">❤ 点赞</th>
-              <th class="num sortable" data-sort="comment_count">💬 评论</th>
-              <th class="num sortable" data-sort="share_count">↗ 分享</th>
-              <th class="num sortable" data-sort="collect_count">⭐ 收藏</th>
-              <th class="num sortable" data-sort="create_time">📅 发布</th>
+              <th class="col-title">视频</th>
+              <th class="num playback-sortable" data-playback-sort="play_count">▶ 播放</th>
+              <th class="num playback-sortable" data-playback-sort="digg_count">❤ 点赞</th>
+              <th class="num playback-sortable" data-playback-sort="comment_count">💬 评论</th>
+              <th class="num playback-sortable" data-playback-sort="share_count">↗ 分享</th>
+              <th class="num playback-sortable" data-playback-sort="collect_count">⭐ 收藏</th>
+              <th class="num playback-sortable" data-playback-sort="create_time">📅 发布</th>
             </tr>
           </thead>
-          <tbody id="videos-body"></tbody>
+          <tbody id="playback-body"></tbody>
         </table>
       </div>
     </section>
 
-    <!-- URL MODE -->
-    <section id="panel-url" class="panel" hidden>
-      <form id="form-url" class="search-bar" autocomplete="off">
-        <input
-          id="input-url"
-          type="text"
-          placeholder="粘贴视频链接 (https://www.tiktok.com/@user/video/123...)"
-          spellcheck="false"
-          required />
-        <button type="submit" class="btn-primary">查询</button>
-      </form>
-
-      <div id="url-status" class="status" hidden></div>
-
-      <article id="video-card" class="video-card" hidden>
-        <div class="vc-cover">
-          <img id="vc-img" alt="封面" />
-          <span id="vc-duration" class="vc-duration"></span>
-        </div>
-        <div class="vc-body">
-          <div class="vc-author">
-            <img id="vc-author-avatar" class="avatar-sm" alt="" />
-            <div>
-              <div id="vc-author-nick" class="vc-author-nick"></div>
-              <a id="vc-author-handle" class="handle" target="_blank" rel="noopener"></a>
-            </div>
-          </div>
-          <p id="vc-title" class="vc-title"></p>
-          <div class="vc-stats">
-            <div class="stat"><span class="stat-label">▶ 播放</span><b id="vc-play">–</b></div>
-            <div class="stat"><span class="stat-label">❤ 点赞</span><b id="vc-like">–</b></div>
-            <div class="stat"><span class="stat-label">💬 评论</span><b id="vc-comment">–</b></div>
-            <div class="stat"><span class="stat-label">↗ 分享</span><b id="vc-share">–</b></div>
-            <div class="stat"><span class="stat-label">⭐ 收藏</span><b id="vc-collect">–</b></div>
-            <div class="stat"><span class="stat-label">⬇ 下载</span><b id="vc-download">–</b></div>
-          </div>
-          <div class="vc-links">
-            <a id="vc-play-link" class="btn-ghost" target="_blank" rel="noopener" hidden>无水印视频</a>
-            <a id="vc-music-link" class="btn-ghost" target="_blank" rel="noopener" hidden>背景音乐</a>
-            <a id="vc-source-link" class="btn-ghost" target="_blank" rel="noopener" hidden>原视频</a>
+    <!-- DATA OVERVIEW -->
+    <section id="panel-overview" class="panel" hidden>
+      <div class="overview-controls">
+        <div class="filter-field">
+          <span>日期范围</span>
+          <div class="filter-pair">
+            <input id="overview-date-from" type="date" />
+            <input id="overview-date-to" type="date" />
           </div>
         </div>
-      </article>
+        <label class="filter-field">
+          <span>数据维度</span>
+          <select id="overview-metric">
+            <option value="play_count">播放数</option>
+            <option value="digg_count">点赞数</option>
+            <option value="comment_count">评论数</option>
+            <option value="share_count">分享数</option>
+            <option value="collect_count">收藏数</option>
+          </select>
+        </label>
+      </div>
+
+      <div id="overview-empty" class="empty-state" hidden>
+        <h2>暂无概览数据</h2>
+        <p id="overview-empty-detail"></p>
+      </div>
+
+      <section id="overview-chart-card" class="overview-chart-card" hidden>
+        <div class="overview-head">
+          <h2 id="overview-chart-title">每日发布内容播放数</h2>
+          <span id="overview-chart-total"></span>
+        </div>
+        <div id="overview-chart" class="chart-wrap"></div>
+      </section>
+
+      <section id="overview-leaders" class="daily-leaders" hidden></section>
     </section>
+
+    <!-- ACCOUNT LIBRARY -->
+    <section id="panel-accounts" class="panel" hidden>
+      <div class="search-bar fixed-account-toolbar">
+        <span class="fixed-account-note">固定账号写在代码里，页面只负责实时拉取和展示。</span>
+        <button type="button" id="btn-refresh-accounts" class="btn-ghost">刷新全部</button>
+      </div>
+
+      <div id="account-status" class="status" hidden></div>
+
+      <div id="accounts-empty" class="empty-state">
+        <h2>暂无固定账号</h2>
+      </div>
+
+      <div id="accounts-list" class="accounts-list" hidden></div>
+    </section>
+
   </main>
+
+  <div id="video-drawer" class="drawer-shell" hidden>
+    <button type="button" class="drawer-backdrop" data-drawer-close aria-label="关闭"></button>
+    <aside class="drawer-panel" role="dialog" aria-modal="true" aria-labelledby="drawer-title">
+      <div class="drawer-head">
+        <div>
+          <div id="drawer-account" class="handle"></div>
+          <h2 id="drawer-title"></h2>
+        </div>
+        <button type="button" class="drawer-close" data-drawer-close aria-label="关闭">×</button>
+      </div>
+      <div class="drawer-video">
+        <iframe
+          id="drawer-iframe"
+          title="TikTok 原视频"
+          allow="encrypted-media; fullscreen"
+          allowfullscreen
+          referrerpolicy="strict-origin-when-cross-origin"
+          loading="lazy"></iframe>
+      </div>
+      <div class="drawer-stats">
+        <div class="stat"><span class="stat-label">▶ 播放</span><b id="drawer-play">–</b></div>
+        <div class="stat"><span class="stat-label">❤ 点赞</span><b id="drawer-like">–</b></div>
+        <div class="stat"><span class="stat-label">💬 评论</span><b id="drawer-comment">–</b></div>
+        <div class="stat"><span class="stat-label">↗ 分享</span><b id="drawer-share">–</b></div>
+        <div class="stat"><span class="stat-label">⭐ 收藏</span><b id="drawer-collect">–</b></div>
+        <div class="stat"><span class="stat-label">📅 发布</span><b id="drawer-date">–</b></div>
+      </div>
+      <a id="drawer-source" class="btn-ghost drawer-source" target="_blank" rel="noopener">打开原视频</a>
+    </aside>
+  </div>
 
   <footer class="site-footer wrap">
     <p>联系方式：<a href="mailto:sbin@mysovi.ai">sbin@mysovi.ai</a></p>

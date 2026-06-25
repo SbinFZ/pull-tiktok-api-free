@@ -71,7 +71,7 @@ npm install            # 安装 wrangler
 npm run dev            # 本地启动，默认 http://localhost:8787
 ```
 
-打开浏览器访问 `http://localhost:8787`，输入用户名或视频链接即可。
+打开浏览器访问 `http://localhost:8787`，页面会实时拉取代码中固定账号的视频数据。
 
 ---
 
