@@ -92,6 +92,12 @@
               <input id="filter-date-from" type="date" data-filter />
               <input id="filter-date-to" type="date" data-filter />
             </div>
+            <div class="date-shortcuts" aria-label="发布时间快捷筛选">
+              <button type="button" data-date-target="playback" data-date-range="yesterday">昨天</button>
+              <button type="button" data-date-target="playback" data-date-range="3">最近3天</button>
+              <button type="button" data-date-target="playback" data-date-range="7">最近7天</button>
+              <button type="button" data-date-target="playback" data-date-range="30">最近30天</button>
+            </div>
           </div>
           <div class="filter-actions">
             <button type="button" id="btn-reset-filters" class="btn-ghost">重置筛选</button>
@@ -140,6 +146,12 @@
           <div class="filter-pair">
             <input id="overview-date-from" type="date" />
             <input id="overview-date-to" type="date" />
+          </div>
+          <div class="date-shortcuts" aria-label="概览日期快捷筛选">
+            <button type="button" data-date-target="overview" data-date-range="yesterday">昨天</button>
+            <button type="button" data-date-target="overview" data-date-range="3">最近3天</button>
+            <button type="button" data-date-target="overview" data-date-range="7">最近7天</button>
+            <button type="button" data-date-target="overview" data-date-range="30">最近30天</button>
           </div>
         </div>
         <label class="filter-field">

@@ -29,6 +29,10 @@ const OVERVIEW_METRICS = {
 
 const $ = (sel) => document.querySelector(sel);
 const API_BASE = (document.getElementById("app-script") || {}).src || document.baseURI;
+const DATE_RANGE_TARGETS = {
+  playback: { from: "#filter-date-from", to: "#filter-date-to", render: () => renderPlayback() },
+  overview: { from: "#overview-date-from", to: "#overview-date-to", render: () => renderOverview() },
+};
 
 let accounts = FIXED_ACCOUNTS.map((handle) => ({
   handle,
@@ -115,6 +119,69 @@ function dateToUnixEnd(value) {
   if (!value) return null;
   const d = new Date(`${value}T23:59:59`);
   return Number.isNaN(d.getTime()) ? null : Math.floor(d.getTime() / 1000);
+}
+
+function dateInputValue(date) {
+  const p = (x) => String(x).padStart(2, "0");
+  return `${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())}`;
+}
+
+function startOfToday() {
+  const date = new Date();
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+function addDays(date, amount) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + amount);
+  return next;
+}
+
+function getDateRange(range) {
+  const today = startOfToday();
+  if (range === "yesterday") {
+    const yesterday = addDays(today, -1);
+    return { from: dateInputValue(yesterday), to: dateInputValue(yesterday) };
+  }
+
+  const days = Number(range) || 7;
+  return {
+    from: dateInputValue(addDays(today, -(days - 1))),
+    to: dateInputValue(today),
+  };
+}
+
+function setDateRange(target, range, options = {}) {
+  const config = DATE_RANGE_TARGETS[target];
+  if (!config) return;
+  const { from, to } = getDateRange(range);
+  $(config.from).value = from;
+  $(config.to).value = to;
+  updateDateShortcutState(target);
+  if (options.render !== false) config.render();
+}
+
+function updateDateShortcutState(target) {
+  const config = DATE_RANGE_TARGETS[target];
+  if (!config) return;
+  const currentFrom = $(config.from).value;
+  const currentTo = $(config.to).value;
+
+  document.querySelectorAll(`[data-date-target="${target}"][data-date-range]`).forEach((button) => {
+    const range = getDateRange(button.dataset.dateRange);
+    button.classList.toggle("is-active", currentFrom === range.from && currentTo === range.to);
+  });
+}
+
+function updateAllDateShortcutStates() {
+  Object.keys(DATE_RANGE_TARGETS).forEach(updateDateShortcutState);
+}
+
+function initializeDateFilters() {
+  setDateRange("playback", "7", { render: false });
+  setDateRange("overview", "7", { render: false });
+  updateAllDateShortcutStates();
 }
 
 function setStatus(el, kind, html) {
@@ -759,7 +826,16 @@ document.querySelectorAll("th.playback-sortable").forEach((th) => {
 
 document.querySelectorAll("[data-filter]").forEach((el) => {
   const eventName = el.tagName === "SELECT" ? "change" : "input";
-  el.addEventListener(eventName, renderPlayback);
+  el.addEventListener(eventName, () => {
+    renderPlayback();
+    if (el.matches("#filter-date-from, #filter-date-to")) updateDateShortcutState("playback");
+  });
+});
+
+document.querySelectorAll("[data-date-target][data-date-range]").forEach((button) => {
+  button.addEventListener("click", () => {
+    setDateRange(button.dataset.dateTarget, button.dataset.dateRange);
+  });
 });
 
 $("#playback-filters").addEventListener("click", (e) => {
@@ -807,15 +883,21 @@ $("#btn-reset-filters").addEventListener("click", () => {
   filterState.videos = new Set();
   closeMultiSelectMenus();
   document.querySelectorAll("[data-filter]").forEach((el) => {
-    el.value = "";
+    if (!el.matches("#filter-date-from, #filter-date-to")) el.value = "";
   });
+  setDateRange("playback", "7", { render: false });
   renderPlayback();
 });
 
 ["#overview-date-from", "#overview-date-to", "#overview-metric"].forEach((selector) => {
   const el = $(selector);
   const eventName = el.tagName === "SELECT" ? "change" : "input";
-  el.addEventListener(eventName, renderOverview);
+  el.addEventListener(eventName, () => {
+    renderOverview();
+    if (selector === "#overview-date-from" || selector === "#overview-date-to") {
+      updateDateShortcutState("overview");
+    }
+  });
 });
 
 $("#overview-leaders").addEventListener("click", (e) => {
@@ -863,6 +945,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && !$("#video-drawer").hidden) closeVideoDrawer();
 });
 
+initializeDateFilters();
 renderAccounts();
 renderPlayback();
 refreshPlaybackData({ reason: "startup" });
