@@ -17,6 +17,7 @@ const FIXED_ACCOUNTS = [
   "trntumn6694",
   "quynthanhmai553",
   "garrisonbright",
+  "jadeybarra1",
 ];
 
 const OVERVIEW_METRICS = {
