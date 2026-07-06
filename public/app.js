@@ -10,6 +10,7 @@ const PAGE_DELAY_MS = 350;
 const MAX_PAGES = 100;
 const ACCOUNT_DELAY_MS = 500;
 const API_TIMEOUT_MS = 30000;
+const API_CACHE_PREFIX = "tiktok-api-cache-v1";
 
 const ACCOUNT_KIND_LABELS = {
   aigc: "AIGC 账号",
@@ -64,6 +65,11 @@ const playbackState = {
 const filterState = {
   accounts: new Set(),
   videos: new Set(),
+};
+
+const apiCacheStats = {
+  hits: 0,
+  writes: 0,
 };
 
 /* ------------------------------- helpers ------------------------------ */
@@ -203,7 +209,80 @@ function clearStatus(el) {
   el.innerHTML = "";
 }
 
+function todayCacheKey() {
+  return dateInputValue(startOfToday());
+}
+
+function normaliseApiCachePath(path) {
+  const url = new URL(path.replace(/^\//, ""), API_BASE);
+  const params = [...url.searchParams.entries()].sort(([aKey, aValue], [bKey, bValue]) => {
+    const keyCompare = aKey.localeCompare(bKey);
+    return keyCompare || aValue.localeCompare(bValue);
+  });
+  const query = params
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+    .join("&");
+  return `${url.pathname}${query ? `?${query}` : ""}`;
+}
+
+function apiCacheKey(path) {
+  return `${API_CACHE_PREFIX}:${todayCacheKey()}:${normaliseApiCachePath(path)}`;
+}
+
+function resetApiCacheStats() {
+  apiCacheStats.hits = 0;
+  apiCacheStats.writes = 0;
+}
+
+function readApiCache(path) {
+  try {
+    const raw = localStorage.getItem(apiCacheKey(path));
+    if (!raw) return null;
+    const cached = JSON.parse(raw);
+    if (!cached || cached.day !== todayCacheKey() || !cached.data) return null;
+    apiCacheStats.hits++;
+    return cached.data;
+  } catch {
+    return null;
+  }
+}
+
+function writeApiCache(path, data) {
+  try {
+    localStorage.setItem(apiCacheKey(path), JSON.stringify({
+      day: todayCacheKey(),
+      cachedAt: new Date().toISOString(),
+      data,
+    }));
+    apiCacheStats.writes++;
+    pruneOldApiCache();
+  } catch {
+    // Storage can be unavailable or full; the app should still work without cache.
+  }
+}
+
+function pruneOldApiCache() {
+  try {
+    const todayPrefix = `${API_CACHE_PREFIX}:${todayCacheKey()}:`;
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(`${API_CACHE_PREFIX}:`) && !key.startsWith(todayPrefix)) {
+        localStorage.removeItem(key);
+      }
+    }
+  } catch {
+    // Best-effort cleanup only.
+  }
+}
+
+function apiCacheStatusText() {
+  return apiCacheStats.hits ? `，本地缓存命中 ${apiCacheStats.hits} 次` : "";
+}
+
 async function apiGet(path) {
+  const cached = readApiCache(path);
+  if (cached) return cached;
+
   const url = new URL(path.replace(/^\//, ""), API_BASE);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
@@ -232,6 +311,7 @@ async function apiGet(path) {
   if (!res.ok || json.ok === false) {
     throw new Error(json.message || `请求失败 (HTTP ${res.status})`);
   }
+  writeApiCache(path, json);
   return json;
 }
 
@@ -315,6 +395,7 @@ function metricHtml(label, value) {
 async function refreshAllAccounts() {
   if (refreshingAccounts) return;
   refreshingAccounts = true;
+  resetApiCacheStats();
   renderAccounts();
   setStatus($("#account-status"), "loading", "正在实时刷新账号资料…");
 
@@ -325,7 +406,7 @@ async function refreshAllAccounts() {
 
   refreshingAccounts = false;
   renderAccounts();
-  setStatus($("#account-status"), "", `已刷新 ${accounts.length} 个固定账号资料。`);
+  setStatus($("#account-status"), "", `已刷新 ${accounts.length} 个固定账号资料${apiCacheStatusText()}。`);
 }
 
 async function refreshAccount(handle, options = {}) {
@@ -605,6 +686,7 @@ async function refreshPlaybackData(options = {}) {
   }
 
   const autoAll = $("#playback-auto-all").checked;
+  resetApiCacheStats();
   playbackState.loading = true;
   playbackState.videos = [];
   playbackState.errors = [];
@@ -644,10 +726,10 @@ async function refreshPlaybackData(options = {}) {
     setStatus(
       statusEl,
       "error",
-      `已实时加载 <b>${playbackState.videos.length}</b> 条，${playbackState.errors.length} 个账号失败。<ul class="status-list">${errorItems}</ul>`
+      `已实时加载 <b>${playbackState.videos.length}</b> 条，${playbackState.errors.length} 个账号失败${apiCacheStatusText()}。<ul class="status-list">${errorItems}</ul>`
     );
   } else {
-    setStatus(statusEl, "", `已实时更新 <b>${playbackState.videos.length}</b> 条播放数据。`);
+    setStatus(statusEl, "", `已实时更新 <b>${playbackState.videos.length}</b> 条播放数据${apiCacheStatusText()}。`);
   }
 }
 
