@@ -386,7 +386,9 @@ function renderPlayback() {
   const aggregate = $("#playback-aggregate");
   const wrap = $("#playback-wrap");
   const refreshBtn = $("#btn-refresh-playback");
+  const applyBtn = $("#btn-apply-filters");
   refreshBtn.disabled = playbackState.loading;
+  applyBtn.disabled = playbackState.loading;
   renderPlaybackFilters();
 
   if (!playbackState.videos.length) {
@@ -589,25 +591,37 @@ function renderPlaybackTable(videos = filteredPlaybackVideos()) {
 async function refreshPlaybackData(options = {}) {
   if (playbackState.loading) return;
 
+  const selectedAccounts = new Set(getSelectedValues("#filter-accounts"));
+  const accountsToFetch = accounts.filter((account) => selectedAccounts.has(accountKey(account.handle)));
+  const statusEl = $("#playback-status");
+
+  if (!accountsToFetch.length) {
+    playbackState.videos = [];
+    playbackState.errors = [];
+    renderAccounts();
+    renderPlayback();
+    setStatus(statusEl, "", "请选择至少一个账号后点击确认。");
+    return;
+  }
+
   const autoAll = $("#playback-auto-all").checked;
   playbackState.loading = true;
   playbackState.videos = [];
   playbackState.errors = [];
   renderPlayback();
 
-  const statusEl = $("#playback-status");
-  setStatus(statusEl, "loading", options.reason === "startup" ? "正在实时拉取固定账号数据…" : "正在实时刷新播放数据…");
+  setStatus(statusEl, "loading", options.reason === "confirm" ? "正在按筛选条件拉取数据…" : "正在实时刷新播放数据…");
 
-  for (let i = 0; i < accounts.length; i++) {
-    let account = accounts[i];
+  for (let i = 0; i < accountsToFetch.length; i++) {
+    let account = accountsToFetch[i];
     try {
       setStatus(
         statusEl,
         "loading",
-        `正在拉取 @${esc(account.handle)} (${i + 1}/${accounts.length})… 已加载 <b>${playbackState.videos.length}</b> 条`
+        `正在拉取 @${esc(account.handle)} (${i + 1}/${accountsToFetch.length})… 已加载 <b>${playbackState.videos.length}</b> 条`
       );
       account = await refreshAccount(account.handle, { quiet: true });
-      const rows = await fetchPlaybackVideosForAccount(account, autoAll, statusEl, i + 1, accounts.length);
+      const rows = await fetchPlaybackVideosForAccount(account, autoAll, statusEl, i + 1, accountsToFetch.length);
       playbackState.videos.push(...rows);
       renderPlayback();
     } catch (err) {
@@ -618,7 +632,7 @@ async function refreshPlaybackData(options = {}) {
       renderAccounts();
     }
 
-    if (i < accounts.length - 1) await sleep(ACCOUNT_DELAY_MS);
+    if (i < accountsToFetch.length - 1) await sleep(ACCOUNT_DELAY_MS);
   }
 
   playbackState.loading = false;
@@ -855,6 +869,10 @@ function closeVideoDrawer() {
 /* ------------------------------- events ------------------------------- */
 
 $("#btn-refresh-playback").addEventListener("click", () => refreshPlaybackData());
+$("#btn-apply-filters").addEventListener("click", () => {
+  closeMultiSelectMenus();
+  refreshPlaybackData({ reason: "confirm" });
+});
 $("#btn-refresh-accounts").addEventListener("click", () => refreshAllAccounts());
 
 document.querySelectorAll("th.playback-sortable").forEach((th) => {
@@ -873,14 +891,15 @@ document.querySelectorAll("th.playback-sortable").forEach((th) => {
 document.querySelectorAll("[data-filter]").forEach((el) => {
   const eventName = el.tagName === "SELECT" ? "change" : "input";
   el.addEventListener(eventName, () => {
-    renderPlayback();
     if (el.matches("#filter-date-from, #filter-date-to")) updateDateShortcutState("playback");
   });
 });
 
 document.querySelectorAll("[data-date-target][data-date-range]").forEach((button) => {
   button.addEventListener("click", () => {
-    setDateRange(button.dataset.dateTarget, button.dataset.dateRange);
+    setDateRange(button.dataset.dateTarget, button.dataset.dateRange, {
+      render: button.dataset.dateTarget !== "playback",
+    });
   });
 });
 
@@ -903,7 +922,7 @@ $("#playback-filters").addEventListener("click", (e) => {
   } else {
     filterState[key] = new Set();
   }
-  renderPlayback();
+  renderPlaybackFilters();
 });
 
 $("#playback-filters").addEventListener("change", (e) => {
@@ -916,7 +935,7 @@ $("#playback-filters").addEventListener("change", (e) => {
   } else {
     filterState[key].delete(option.value);
   }
-  renderPlayback();
+  renderPlaybackFilters();
 });
 
 document.addEventListener("click", (e) => {
@@ -994,4 +1013,3 @@ document.addEventListener("keydown", (e) => {
 initializeDateFilters();
 renderAccounts();
 renderPlayback();
-refreshPlaybackData({ reason: "startup" });
