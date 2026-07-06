@@ -270,6 +270,23 @@ main { padding: 28px 20px 60px; }
   display: grid;
   gap: 4px;
 }
+.multi-option-group {
+  display: grid;
+  gap: 4px;
+}
+.multi-option-group + .multi-option-group {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.multi-group-title {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  padding: 4px 6px 2px;
+}
 .multi-option {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);

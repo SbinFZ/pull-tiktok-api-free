@@ -11,13 +11,19 @@ const MAX_PAGES = 100;
 const ACCOUNT_DELAY_MS = 500;
 const API_TIMEOUT_MS = 30000;
 
+const ACCOUNT_KIND_LABELS = {
+  aigc: "AIGC 账号",
+  ugc: "UGC 账号",
+};
+
 const FIXED_ACCOUNTS = [
-  "laqunhphng897",
-  "lifeofsam3",
-  "trntumn6694",
-  "quynthanhmai553",
-  "garrisonbright",
-  "jadeybarra1",
+  { handle: "laqunhphng897", kind: "aigc" },
+  { handle: "lifeofsam3", kind: "aigc" },
+  { handle: "trntumn6694", kind: "aigc" },
+  { handle: "quynthanhmai553", kind: "aigc" },
+  { handle: "garrisonbright", kind: "aigc" },
+  { handle: "jadeybarra1", kind: "aigc" },
+  { handle: "odettehsing78", kind: "ugc" },
 ];
 
 const OVERVIEW_METRICS = {
@@ -35,8 +41,9 @@ const DATE_RANGE_TARGETS = {
   overview: { from: "#overview-date-from", to: "#overview-date-to", render: () => renderOverview() },
 };
 
-let accounts = FIXED_ACCOUNTS.map((handle) => ({
-  handle,
+let accounts = FIXED_ACCOUNTS.map((account) => ({
+  handle: account.handle,
+  kind: account.kind,
   profile: null,
   stats: null,
   updatedAt: null,
@@ -55,7 +62,7 @@ const playbackState = {
 };
 
 const filterState = {
-  accounts: new Set(),
+  accounts: new Set(FIXED_ACCOUNTS.map((account) => accountKey(account.handle))),
   videos: new Set(),
 };
 
@@ -407,6 +414,8 @@ function renderPlaybackFilters() {
     label: account.profile && account.profile.nickname
       ? `${account.profile.nickname} (@${account.handle})`
       : `@${account.handle}`,
+    group: account.kind,
+    groupLabel: ACCOUNT_KIND_LABELS[account.kind] || "其他账号",
   }));
   const videoOptions = [...playbackState.videos]
     .sort((a, b) => (b.create_time || 0) - (a.create_time || 0))
@@ -418,7 +427,7 @@ function renderPlaybackFilters() {
   filterState.accounts = pruneSelection(filterState.accounts, accountOptions);
   filterState.videos = pruneSelection(filterState.videos, videoOptions);
   renderMultiSelect("#filter-accounts", accountOptions, filterState.accounts, "全部账号", "账号");
-  renderMultiSelect("#filter-videos", videoOptions, filterState.videos, "全部视频", "视频");
+  renderMultiSelect("#filter-videos", videoOptions, filterState.videos, "全部视频", "视频", { emptyMeansAll: true });
 }
 
 function pruneSelection(selection, options) {
@@ -426,23 +435,59 @@ function pruneSelection(selection, options) {
   return new Set([...selection].filter((value) => available.has(value)));
 }
 
-function renderMultiSelect(selector, options, selection, emptyLabel, unitLabel) {
+function renderMultiSelect(selector, options, selection, emptyLabel, unitLabel, config = {}) {
   const root = $(selector);
   if (!root) return;
   const trigger = root.querySelector(".multi-select-trigger");
   const label = root.querySelector("[data-multi-label]");
   const optionsEl = root.querySelector(".multi-options");
   trigger.disabled = options.length === 0;
-  label.textContent = selection.size ? `已选 ${selection.size}/${options.length} 个${unitLabel}` : emptyLabel;
+  const allSelected = options.length > 0 && selection.size === options.length;
+  const noSelection = selection.size === 0;
+
+  if (allSelected || (config.emptyMeansAll && noSelection)) {
+    label.textContent = emptyLabel;
+  } else if (noSelection) {
+    label.textContent = `未选${unitLabel}`;
+  } else {
+    label.textContent = `已选 ${selection.size}/${options.length} 个${unitLabel}`;
+  }
+
   optionsEl.innerHTML = options.length
-    ? options.map((option) => {
-        const checked = selection.has(option.value) ? "checked" : "";
-        return `<label class="multi-option">
-          <input type="checkbox" data-multi-option value="${esc(option.value)}" ${checked} />
-          <span>${esc(option.label)}</span>
-        </label>`;
-      }).join("")
+    ? renderMultiSelectOptions(options, selection)
     : `<div class="multi-empty">暂无选项</div>`;
+}
+
+function renderMultiSelectOptions(options, selection) {
+  if (!options.some((option) => option.groupLabel)) {
+    return options.map((option) => renderMultiOption(option, selection)).join("");
+  }
+
+  const groups = [];
+  options.forEach((option) => {
+    const key = option.group || "other";
+    let group = groups.find((item) => item.key === key);
+    if (!group) {
+      group = { key, label: option.groupLabel || "其他账号", options: [] };
+      groups.push(group);
+    }
+    group.options.push(option);
+  });
+
+  return groups
+    .map((group) => `<div class="multi-option-group">
+      <div class="multi-group-title">${esc(group.label)}</div>
+      ${group.options.map((option) => renderMultiOption(option, selection)).join("")}
+    </div>`)
+    .join("");
+}
+
+function renderMultiOption(option, selection) {
+  const checked = selection.has(option.value) ? "checked" : "";
+  return `<label class="multi-option">
+    <input type="checkbox" data-multi-option value="${esc(option.value)}" ${checked} />
+    <span>${esc(option.label)}</span>
+  </label>`;
 }
 
 function getSelectedValues(input) {
@@ -477,7 +522,7 @@ function filteredPlaybackVideos() {
   const dateTo = dateToUnixEnd($("#filter-date-to").value);
 
   return playbackState.videos.filter((video) => {
-    if (selectedAccounts.size && !selectedAccounts.has(accountKey(video.accountHandle))) return false;
+    if (!selectedAccounts.has(accountKey(video.accountHandle))) return false;
     if (selectedVideos.size && !selectedVideos.has(video.rowId)) return false;
     if (playMin != null && video.play_count < playMin) return false;
     if (playMax != null && video.play_count > playMax) return false;
@@ -493,7 +538,7 @@ function renderPlaybackAggregate(videos = filteredPlaybackVideos()) {
   const sum = (key) => videos.reduce((acc, item) => acc + (Number(item[key]) || 0), 0);
   const plays = sum("play_count");
   const visibleAccountCount = new Set(videos.map((video) => accountKey(video.accountHandle))).size;
-  $("#pd-accounts").textContent = fmt(visibleAccountCount || accounts.length);
+  $("#pd-accounts").textContent = fmt(visibleAccountCount);
   $("#pd-videos").textContent = fmt(videos.length);
   $("#pd-plays").textContent = fmt(plays);
   $("#pd-likes").textContent = fmt(sum("digg_count"));
@@ -880,7 +925,7 @@ document.addEventListener("click", (e) => {
 });
 
 $("#btn-reset-filters").addEventListener("click", () => {
-  filterState.accounts = new Set();
+  filterState.accounts = new Set(accounts.map((account) => accountKey(account.handle)));
   filterState.videos = new Set();
   closeMultiSelectMenus();
   document.querySelectorAll("[data-filter]").forEach((el) => {
