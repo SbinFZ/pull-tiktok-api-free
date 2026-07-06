@@ -62,7 +62,7 @@ const playbackState = {
 };
 
 const filterState = {
-  accounts: new Set(FIXED_ACCOUNTS.map((account) => accountKey(account.handle))),
+  accounts: new Set(),
   videos: new Set(),
 };
 
@@ -925,7 +925,7 @@ document.addEventListener("click", (e) => {
 });
 
 $("#btn-reset-filters").addEventListener("click", () => {
-  filterState.accounts = new Set(accounts.map((account) => accountKey(account.handle)));
+  filterState.accounts = new Set();
   filterState.videos = new Set();
   closeMultiSelectMenus();
   document.querySelectorAll("[data-filter]").forEach((el) => {
