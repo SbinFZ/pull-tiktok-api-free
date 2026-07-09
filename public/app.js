@@ -10,7 +10,7 @@ const PAGE_DELAY_MS = 350;
 const MAX_PAGES = 100;
 const ACCOUNT_DELAY_MS = 500;
 const API_TIMEOUT_MS = 120000;
-const API_CACHE_PREFIX = "tiktok-api-cache-v2";
+const API_CACHE_PREFIX = "tiktok-api-cache-v3";
 
 const ACCOUNT_KIND_LABELS = {
   aigc: "AIGC 账号",
