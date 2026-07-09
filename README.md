@@ -114,7 +114,7 @@ npm run deploy         # = npx wrangler deploy
 > 如需在 CI / 无浏览器环境部署，使用 API Token：
 > ```bash
 > export CLOUDFLARE_API_TOKEN=<your-token>
-> export CLOUDFLARE_ACCOUNT_ID=4d99845e8fa4969b66fa87c2208ffbcb
+> export CLOUDFLARE_ACCOUNT_ID=7ba0873771176b0b2dc1f3aadf031abc
 > npx wrangler deploy
 > ```
 
