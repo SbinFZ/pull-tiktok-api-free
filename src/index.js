@@ -1,9 +1,10 @@
 /**
- * Cloudflare Worker — TikTok playback-info proxy (tikwm.com)
+ * Cloudflare Worker — TikTok playback-info proxy (tikwm.com / Apify)
  *
  * Public, no-login. Proxies a small allow-list of tikwm endpoints so the
- * browser never calls tikwm directly (avoids CORS, centralises caching and
- * rate-limit handling). Static frontend is served via the [assets] binding.
+ * browser never calls upstream services directly (avoids CORS, centralises
+ * caching and rate-limit handling). Static frontend is served via the [assets]
+ * binding.
  *
  * Routes (all GET, JSON out):
  *   /api/video?url=<tiktok url>            single video + playback stats
@@ -12,7 +13,11 @@
  */
 
 const TIKWM = "https://www.tikwm.com/api";
+const APIFY_ACTOR_URL =
+  "https://api.apify.com/v2/acts/clockworks~tiktok-scraper/run-sync-get-dataset-items";
 const UPSTREAM_TIMEOUT_MS = 25000;
+const APIFY_TIMEOUT_MS = 120000;
+const APIFY_SYNC_TIMEOUT_SECS = 120;
 
 // Per-route edge cache TTL (seconds). tikwm rate-limits per IP; all of our
 // users share the Worker egress IP, so caching is the main defence.
@@ -57,7 +62,7 @@ export default {
         case "user":
           return await handleUser(url, ctx);
         case "posts":
-          return await handlePosts(url, ctx);
+          return await handlePosts(url, env, ctx);
         default:
           return errorResponse("not_found", "Unknown API route.", 404);
       }
@@ -98,13 +103,21 @@ async function handleUser(url, ctx) {
   return proxy(upstream, ctx, CACHE_TTL.user);
 }
 
-async function handlePosts(url, ctx) {
+async function handlePosts(url, env, ctx) {
   const handle = normaliseHandle(url.searchParams.get("unique_id"));
   if (!handle) {
     return errorResponse("bad_request", "A valid TikTok username is required.", 400);
   }
   const cursor = clampInt(url.searchParams.get("cursor"), 0, 0, Number.MAX_SAFE_INTEGER);
-  const count = clampInt(url.searchParams.get("count"), 30, 1, 35);
+  const count = clampInt(url.searchParams.get("count"), 30, 1, 100);
+
+  if (shouldUseApify(env)) {
+    if (cursor > 0) {
+      return jsonResponse(apifyPostsPayload(handle, [], count));
+    }
+    return proxyApifyPosts(handle, count, env, ctx);
+  }
+
   const upstream =
     `${TIKWM}/user/posts?unique_id=${encodeURIComponent(handle)}` +
     `&count=${count}&cursor=${cursor}`;
@@ -189,6 +202,172 @@ async function proxy(upstreamUrl, ctx, ttl) {
   return response;
 }
 
+async function proxyApifyPosts(handle, count, env, ctx) {
+  const token = (env.APIFY_TOKEN || "").trim();
+  if (!token) {
+    return errorResponse(
+      "apify_not_configured",
+      "Apify token is not configured. Set the APIFY_TOKEN secret before using Apify.",
+      500
+    );
+  }
+
+  const cache = caches.default;
+  const cacheKey = new Request(
+    `https://cache.local/apify/posts?unique_id=${encodeURIComponent(handle)}&count=${count}`,
+    { method: "GET" }
+  );
+  const cached = await cache.match(cacheKey);
+  if (cached) return withCors(cached);
+
+  const apifyResult = await fetchApifyProfilePosts(handle, count, token, env);
+  if (!apifyResult.ok) return apifyResult.response;
+
+  const response = jsonResponse(apifyPostsPayload(handle, apifyResult.items, count), {
+    "cache-control": `public, max-age=${CACHE_TTL.posts}`,
+  });
+  ctx.waitUntil(cache.put(cacheKey, response.clone()));
+  return response;
+}
+
+async function fetchApifyProfilePosts(handle, count, token, env) {
+  const endpoint = new URL(APIFY_ACTOR_URL);
+  endpoint.searchParams.set("format", "json");
+  endpoint.searchParams.set("clean", "1");
+  endpoint.searchParams.set("timeout", String(APIFY_SYNC_TIMEOUT_SECS));
+  endpoint.searchParams.set("maxItems", String(count));
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), APIFY_TIMEOUT_MS);
+  let res;
+
+  try {
+    res = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        accept: "application/json",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(apifyProfileInput(handle, count, env)),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err && err.name === "AbortError") {
+      return {
+        ok: false,
+        response: errorResponse("apify_timeout", "Apify request timed out. Please retry later.", 504),
+      };
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+
+  let payload;
+  try {
+    payload = await res.json();
+  } catch {
+    return {
+      ok: false,
+      response: errorResponse("apify_error", `Apify returned a non-JSON response (HTTP ${res.status}).`, 502),
+    };
+  }
+
+  if (!res.ok) {
+    const message = payload && payload.error && payload.error.message
+      ? payload.error.message
+      : `Apify returned HTTP ${res.status}.`;
+    return {
+      ok: false,
+      response: errorResponse("apify_error", message, res.status === 401 || res.status === 403 ? 401 : 502),
+    };
+  }
+
+  if (!Array.isArray(payload)) {
+    return {
+      ok: false,
+      response: errorResponse("apify_error", "Apify did not return dataset items. Please retry later.", 502),
+    };
+  }
+
+  return { ok: true, items: payload };
+}
+
+function apifyProfileInput(handle, count, env) {
+  return {
+    profiles: [handle],
+    resultsPerPage: count,
+    profileScrapeSections: ["videos"],
+    profileSorting: "latest",
+    excludePinnedPosts: false,
+    scrapeRelatedVideos: false,
+    shouldDownloadAvatars: false,
+    shouldDownloadCovers: false,
+    shouldDownloadMusicCovers: false,
+    shouldDownloadSlideshowImages: false,
+    shouldDownloadSubtitles: false,
+    shouldDownloadVideos: false,
+    commentsPerPost: 0,
+    topLevelCommentsPerPost: 0,
+    maxRepliesPerComment: 0,
+    maxFollowersPerProfile: 0,
+    maxFollowingPerProfile: 0,
+    proxyCountryCode: env.APIFY_PROXY_COUNTRY_CODE || "None",
+  };
+}
+
+function apifyPostsPayload(handle, items, count) {
+  const videos = items
+    .filter((item) => item && !item.connectedTo)
+    .map((item) => normaliseApifyVideo(item, handle))
+    .filter((video) => video.id)
+    .slice(0, count);
+
+  return {
+    code: 0,
+    msg: "success",
+    source: "apify",
+    data: {
+      cursor: 0,
+      hasMore: false,
+      count,
+      videos,
+    },
+  };
+}
+
+function normaliseApifyVideo(item, handle) {
+  const author = item.authorMeta || {};
+  const videoMeta = item.videoMeta || {};
+  const id = String(item.id || extractTikTokVideoId(item.webVideoUrl) || "");
+  const authorHandle = author.name || handle;
+
+  return {
+    id,
+    video_id: id,
+    title: item.text || "",
+    cover: videoMeta.coverUrl || videoMeta.originalCoverUrl || "",
+    origin_cover: videoMeta.coverUrl || videoMeta.originalCoverUrl || "",
+    play_count: toNumber(item.playCount),
+    digg_count: toNumber(item.diggCount),
+    comment_count: toNumber(item.commentCount),
+    share_count: toNumber(item.shareCount),
+    collect_count: toNumber(item.collectCount),
+    create_time: toNumber(item.createTime) || isoToUnixSeconds(item.createTimeISO),
+    url: item.webVideoUrl || `https://www.tiktok.com/@${authorHandle}/video/${id}`,
+    author: {
+      unique_id: authorHandle,
+      nickname: author.nickName || author.name || handle,
+      avatar: author.avatar || author.originalAvatarUrl || "",
+      follower_count: toNumber(author.fans),
+      heart_count: toNumber(author.heart),
+      video_count: toNumber(author.video),
+      verified: Boolean(author.verified),
+    },
+  };
+}
+
 /* ------------------------------- helpers -------------------------------- */
 
 function withCors(response) {
@@ -202,6 +381,19 @@ function errorResponse(error, message, status, extra = {}) {
     JSON.stringify({ ok: false, error, message, ...extra }),
     { status, headers: JSON_HEADERS }
   );
+}
+
+function jsonResponse(payload, extraHeaders = {}) {
+  return new Response(JSON.stringify(payload), {
+    status: 200,
+    headers: { ...JSON_HEADERS, ...extraHeaders },
+  });
+}
+
+function shouldUseApify(env) {
+  const source = String(env.TIKTOK_DATA_SOURCE || (env.APIFY_TOKEN ? "apify" : "tikwm")).toLowerCase();
+  if (source === "auto") return Boolean(env.APIFY_TOKEN);
+  return source === "apify";
 }
 
 /** Strip a leading @ and extract a handle from a profile URL if one was pasted. */
@@ -229,4 +421,21 @@ function clampInt(value, fallback, min, max) {
   const n = Number.parseInt(value, 10);
   if (!Number.isFinite(n)) return fallback;
   return Math.min(max, Math.max(min, n));
+}
+
+function toNumber(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function isoToUnixSeconds(value) {
+  if (!value) return 0;
+  const time = Date.parse(value);
+  return Number.isFinite(time) ? Math.floor(time / 1000) : 0;
+}
+
+function extractTikTokVideoId(value) {
+  if (!value) return "";
+  const match = String(value).match(/\/video\/(\d+)/);
+  return match ? match[1] : "";
 }

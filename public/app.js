@@ -9,8 +9,8 @@ const PAGE_SIZE = 30;
 const PAGE_DELAY_MS = 350;
 const MAX_PAGES = 100;
 const ACCOUNT_DELAY_MS = 500;
-const API_TIMEOUT_MS = 30000;
-const API_CACHE_PREFIX = "tiktok-api-cache-v1";
+const API_TIMEOUT_MS = 120000;
+const API_CACHE_PREFIX = "tiktok-api-cache-v2";
 
 const ACCOUNT_KIND_LABELS = {
   aigc: "AIGC 账号",
@@ -766,7 +766,7 @@ function normalisePlaybackVideo(video, account) {
   const id = video.video_id || video.id || "";
   const accountHandle = account.handle;
   const authorHandle = (video.author && video.author.unique_id) || accountHandle;
-  const url = `https://www.tiktok.com/@${authorHandle}/video/${id}`;
+  const url = video.url || video.webVideoUrl || `https://www.tiktok.com/@${authorHandle}/video/${id}`;
   return {
     rowId: `${accountKey(accountHandle)}:${id}`,
     id,
@@ -776,14 +776,14 @@ function normalisePlaybackVideo(video, account) {
     accountName: account.profile && account.profile.nickname,
     accountAvatar: account.profile && account.profile.avatar,
     authorHandle,
-    title: video.title || "",
-    cover: video.origin_cover || video.cover || "",
-    play_count: Number(video.play_count) || 0,
-    digg_count: Number(video.digg_count) || 0,
-    comment_count: Number(video.comment_count) || 0,
-    share_count: Number(video.share_count) || 0,
-    collect_count: Number(video.collect_count) || 0,
-    create_time: Number(video.create_time) || 0,
+    title: video.title || video.text || "",
+    cover: video.origin_cover || video.cover || (video.videoMeta && video.videoMeta.coverUrl) || "",
+    play_count: Number(video.play_count ?? video.playCount) || 0,
+    digg_count: Number(video.digg_count ?? video.diggCount) || 0,
+    comment_count: Number(video.comment_count ?? video.commentCount) || 0,
+    share_count: Number(video.share_count ?? video.shareCount) || 0,
+    collect_count: Number(video.collect_count ?? video.collectCount) || 0,
+    create_time: Number(video.create_time ?? video.createTime) || 0,
   };
 }
 

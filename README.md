@@ -2,7 +2,7 @@
 
 > 免登录的 TikTok 播放数据查询工具 —— 按**用户**或**视频链接**拉取播放量、点赞、评论、分享、收藏等数据。前端 + Cloudflare Worker 后端，一键部署。
 
-数据来源：[tikwm.com](https://www.tikwm.com) 公共 API（无需 API Key）。
+数据来源：[tikwm.com](https://www.tikwm.com) 公共 API（无需 API Key），也可通过 [Apify TikTok Scraper](https://apify.com/clockworks/tiktok-scraper) 拉取账号视频列表。
 
 ![界面截图](docs/screenshot.png)
 
@@ -25,24 +25,49 @@
 ## 🏗️ 架构
 
 ```
-浏览器 (public/)  ──fetch──▶  Cloudflare Worker (src/index.js)  ──fetch──▶  tikwm.com API
+浏览器 (public/)  ──fetch──▶  Cloudflare Worker (src/index.js)  ──fetch──▶  tikwm.com / Apify
    静态前端                      /api/* 代理 + 边缘缓存 + 校验            公共数据接口
 ```
 
 - **前端**：原生 HTML / CSS / JS（无构建步骤），通过 Cloudflare [Workers Static Assets](https://developers.cloudflare.com/workers/static-assets/) 托管。
-- **后端**：单个 Worker，将浏览器请求代理到 tikwm，集中处理：
+- **后端**：单个 Worker，将浏览器请求代理到 tikwm 或 Apify，集中处理：
   - **输入校验**：用户名格式、TikTok 链接合法性。
-  - **边缘缓存**（Cache API）：视频 5 分钟、用户资料 10 分钟、作品列表 3 分钟 —— 因为所有访问者共用 Worker 出口 IP，缓存是抵御上游频率限制的主要手段。
+  - **边缘缓存**（Cache API）：视频 5 分钟、用户资料 10 分钟、作品列表 3 分钟 —— 因为所有访问者共用 Worker 出口 IP，缓存是抵御上游频率限制和控制 Apify 成本的主要手段。
   - **错误归一化**：把 tikwm 的 `code != 0`、HTTP 429 等转换为统一的 `{ ok:false, error, message }` 结构。
   - 通过 `[assets]` 绑定回退静态资源。
 
 ### 代理接口
 
-| Worker 路由 | 转发到 tikwm | 说明 |
+| Worker 路由 | 数据源 | 说明 |
 |---|---|---|
-| `GET /api/video?url=<视频链接>` | `/api/?url=...&hd=1` | 单个视频 + 播放数据 |
-| `GET /api/user?unique_id=<用户名>` | `/api/user/info?unique_id=...` | 用户资料 + 聚合统计 |
-| `GET /api/posts?unique_id=<用户名>&cursor=&count=` | `/api/user/posts?...` | 用户视频列表（含每条视频播放数据 + `cursor` / `hasMore` 分页） |
+| `GET /api/video?url=<视频链接>` | tikwm `/api/?url=...&hd=1` | 单个视频 + 播放数据 |
+| `GET /api/user?unique_id=<用户名>` | tikwm `/api/user/info?unique_id=...` | 用户资料 + 聚合统计 |
+| `GET /api/posts?unique_id=<用户名>&cursor=&count=` | Apify 或 tikwm `/api/user/posts?...` | 用户视频列表（含每条视频播放数据） |
+
+### Apify 数据源
+
+配置 `APIFY_TOKEN` 后，`/api/posts` 会优先使用 Apify 的 `clockworks/tiktok-scraper` 拉取账号视频列表，并把返回字段转换成前端已有的数据结构。`/api/user` 和 `/api/video` 仍使用 tikwm。
+
+本地开发可创建 `.dev.vars`：
+
+```bash
+APIFY_TOKEN=apify_api_xxx
+TIKTOK_DATA_SOURCE=apify
+```
+
+部署到 Cloudflare Workers：
+
+```bash
+npx wrangler secret put APIFY_TOKEN
+npx wrangler deploy
+```
+
+可选配置：
+
+- `TIKTOK_DATA_SOURCE=apify`：强制 `/api/posts` 使用 Apify。
+- `TIKTOK_DATA_SOURCE=tikwm`：强制继续使用 tikwm。
+- `TIKTOK_DATA_SOURCE=auto`：有 `APIFY_TOKEN` 时使用 Apify，否则使用 tikwm。
+- `APIFY_PROXY_COUNTRY_CODE=US`：指定 Apify Actor 的代理国家；默认 `None`。
 
 ---
 
