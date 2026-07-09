@@ -695,16 +695,22 @@ async function refreshPlaybackData(options = {}) {
   setStatus(statusEl, "loading", options.reason === "confirm" ? "正在按筛选条件拉取数据…" : "正在实时刷新播放数据…");
 
   for (let i = 0; i < accountsToFetch.length; i++) {
-    let account = accountsToFetch[i];
+    const account = accountsToFetch[i];
     try {
       setStatus(
         statusEl,
         "loading",
         `正在拉取 @${esc(account.handle)} (${i + 1}/${accountsToFetch.length})… 已加载 <b>${playbackState.videos.length}</b> 条`
       );
-      account = await refreshAccount(account.handle, { quiet: true });
+      account.status = "loading";
+      account.error = null;
+      renderAccounts();
       const rows = await fetchPlaybackVideosForAccount(account, autoAll, statusEl, i + 1, accountsToFetch.length);
+      hydrateAccountFromPlaybackRows(account, rows);
+      account.status = "ready";
+      account.updatedAt = new Date().toISOString();
       playbackState.videos.push(...rows);
+      renderAccounts();
       renderPlayback();
     } catch (err) {
       const message = err.message || String(err);
@@ -762,10 +768,30 @@ async function fetchPlaybackVideosForAccount(account, autoAll, statusEl, account
   return rows;
 }
 
+function hydrateAccountFromPlaybackRows(account, rows) {
+  const row = rows.find((item) => accountKey(item.accountHandle) === accountKey(account.handle));
+  if (!row) return;
+  account.profile = {
+    nickname: row.accountName || account.profile?.nickname || account.handle,
+    avatar: row.accountAvatar || account.profile?.avatar || "",
+    signature: account.profile?.signature || "",
+    verified: Boolean(account.profile?.verified),
+  };
+  if (!account.stats) {
+    account.stats = {
+      followerCount: 0,
+      followingCount: 0,
+      heartCount: 0,
+      videoCount: 0,
+    };
+  }
+}
+
 function normalisePlaybackVideo(video, account) {
   const id = video.video_id || video.id || "";
   const accountHandle = account.handle;
-  const authorHandle = (video.author && video.author.unique_id) || accountHandle;
+  const author = video.author || {};
+  const authorHandle = author.unique_id || accountHandle;
   const url = video.url || video.webVideoUrl || `https://www.tiktok.com/@${authorHandle}/video/${id}`;
   return {
     rowId: `${accountKey(accountHandle)}:${id}`,
@@ -773,8 +799,8 @@ function normalisePlaybackVideo(video, account) {
     url,
     embedUrl: id ? `https://www.tiktok.com/embed/v2/${id}` : url,
     accountHandle,
-    accountName: account.profile && account.profile.nickname,
-    accountAvatar: account.profile && account.profile.avatar,
+    accountName: (account.profile && account.profile.nickname) || author.nickname || authorHandle,
+    accountAvatar: (account.profile && account.profile.avatar) || author.avatar || author.avatarThumb || "",
     authorHandle,
     title: video.title || video.text || "",
     cover: video.origin_cover || video.cover || (video.videoMeta && video.videoMeta.coverUrl) || "",
