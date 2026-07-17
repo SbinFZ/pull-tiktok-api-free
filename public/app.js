@@ -25,6 +25,10 @@ const FIXED_ACCOUNTS = [
   { handle: "garrisonbright", kind: "aigc" },
   { handle: "jadeybarra1", kind: "aigc" },
   { handle: "sovi.ai0", kind: "aigc" },
+  { handle: "niakwong6", kind: "aigc" },
+  { handle: "ameliakui054", kind: "aigc" },
+  { handle: "sallyga54", kind: "aigc" },
+  { handle: "imogenebai2", kind: "ugc" },
   { handle: "odettehsing78", kind: "ugc" },
 ];
 
